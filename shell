@@ -1,0 +1,12 @@
+set color_user = "%{\e[31m%}"
+set color_path = "%{\e[36m%}"
+set color_slash = "%{\e[36m%}"
+set prompt = "${color_user}%n@%m ${color_path}%/${color_slash}/"
+set complete=enhance
+set autolist
+###################alias command#######################
+alias cd "cd \!* ; ls"
+alias v "vi"
+alias cl "clear"
+alias e "evince"
+alias rm "rm -rf"
