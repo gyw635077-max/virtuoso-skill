@@ -1,0 +1,430 @@
+# IC 项目管理工具复刻说明
+
+本文档用于在其它电脑上复刻当前 IC PM 网页工具的使用方式、部署方式和核心业务逻辑。
+
+## 1. 当前文件结构
+
+项目目录：
+
+```text
+D:\codex\PM开发
+```
+
+关键文件：
+
+```text
+D:\codex\PM开发\IC项目管理工具.html
+D:\codex\PM开发\ic-pm-web\index.html
+D:\codex\PM开发\ic-pm-web\server.py
+D:\codex\PM开发\ic-pm-web\data\ic_pm_data.json
+```
+
+说明：
+
+- `IC项目管理工具.html`：本地单文件版本，适合单机打开。
+- `ic-pm-web/index.html`：网页端版本。
+- `ic-pm-web/server.py`：网页端本地服务器。
+- `ic-pm-web/data/ic_pm_data.json`：网页端项目数据文件，复刻时必须保留，不要覆盖。
+
+## 2. 启动网页端 Server
+
+在 PowerShell 中执行：
+
+```powershell
+cd "D:\codex\PM开发\ic-pm-web"
+python server.py
+```
+
+如果系统 `python` 不可用，也可以使用 Codex 内置 Python：
+
+```powershell
+cd "D:\codex\PM开发\ic-pm-web"
+& "C:\Users\guoyanwu\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" "server.py"
+```
+
+后台启动命令：
+
+```powershell
+$python="C:\Users\guoyanwu\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+$work="D:\codex\PM开发\ic-pm-web"
+Start-Process -FilePath $python -ArgumentList "server.py" -WorkingDirectory $work -WindowStyle Hidden -RedirectStandardOutput "$work\server.out.log" -RedirectStandardError "$work\server.err.log"
+```
+
+检查端口：
+
+```powershell
+Get-NetTCPConnection -LocalPort 8899
+```
+
+正常时应看到：
+
+```text
+0.0.0.0  8899  Listen
+```
+
+## 3. 固定访问地址
+
+当前团队统一使用：
+
+```text
+http://10.10.18.35:8899/
+```
+
+本机也可访问：
+
+```text
+http://127.0.0.1:8899/
+```
+
+曾测试过电脑名域名：
+
+```text
+http://SHSC-郭岩武.sionchip.com:8899/
+```
+
+但该域名会解析出 IPv6 `fe80::...`，其它电脑可能无法访问，所以最终固定使用 IPv4 地址：
+
+```text
+http://10.10.18.35:8899/
+```
+
+注意：该地址稳定的前提是公司网络/DHCP 持续把 `10.10.18.35` 分配给这台电脑。
+
+## 4. 局域网访问规则
+
+`server.py` 监听：
+
+```python
+host = "0.0.0.0"
+port = 8899
+```
+
+这表示其它局域网电脑可以访问本机的 `8899` 端口。
+
+权限规则：
+
+- 本机访问可以编辑数据。
+- 局域网其它电脑只读查看。
+- 其它电脑向 `/api/data` 写入会被拒绝，避免误改数据。
+
+如果别人打不开，按下面顺序排查：
+
+```powershell
+Invoke-WebRequest -Uri "http://127.0.0.1:8899/" -UseBasicParsing
+Invoke-WebRequest -Uri "http://10.10.18.35:8899/" -UseBasicParsing
+Get-NetTCPConnection -LocalPort 8899
+```
+
+如果本机能打开，别人打不开，通常是公司网络隔离或 Windows 防火墙端口策略问题，需要放行 TCP 8899。
+
+管理员 PowerShell 可执行：
+
+```powershell
+New-NetFirewallRule -DisplayName "IC PM Web 8899" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 8899
+```
+
+## 5. 数据保护原则
+
+我们明确要求：
+
+- 用户已录入的数据不能被删除。
+- 不能覆盖 `ic_pm_data.json`。
+- 统计逻辑只读取当前界面可见、实时维护的数据。
+- 不再读取隐藏旧字段来计算状态。
+
+曾经存在但已从统计逻辑中剔除的旧字段：
+
+```text
+status
+signoff
+blocker
+notes
+DRC/LVS/PEX
+Layout状态
+风险/备注
+```
+
+这些旧字段即使还残留在历史 JSON 中，也不再参与看板和统计。
+
+## 6. 模块完成率逻辑
+
+完成率不再读取隐藏 `status` 字段。
+
+当前逻辑：
+
+```text
+Leaf模块进度完成率 = progress_pct >= 100 的 Leaf 模块数 / Leaf 模块总数
+```
+
+例如：
+
+```text
+0/32 个进度100% => 0%
+```
+
+## 7. 电路和 Layout 模块数量口径
+
+电路和 Layout 的模块数量必须一致。
+
+当前统一口径：
+
+```text
+只统计 Leaf 模块
+```
+
+父目录、层级节点不计入状态数量。
+
+当前例子：
+
+```text
+电路未提交 32 / 32
+Layout未开始 32 / 32
+```
+
+## 8. Layout 人力统计逻辑
+
+最终人力需求按可见树统计。
+
+公式：
+
+```text
+项目Layout总人力
+= 从 Chip_Top 可见树能遍历到的所有模块 workload_days 之和
+= 负责人工作量分布之和
+= 三级模块人力分布之和
+```
+
+当前对账结果：
+
+```text
+可见模块数：39
+项目Layout总人力：172.5 天
+负责人分布合计：172.5 天
+三级模块分布合计：172.5 天
+```
+
+隐藏/不可达节点不参与统计。
+
+曾排查到隐藏节点：
+
+```text
+LP_LDO 0 天
+ALDO 3 天
+DLDO 3 天
+```
+
+这些节点合计 6 天，但不在 `Chip_Top` 可见树中，所以已经从总人力中排除。
+
+## 9. 三级模块人力分布
+
+三级模块定义：
+
+```text
+Chip_Top -> ANA_TOP -> MC_A10_PLL
+Chip_Top -> ANA_TOP -> REF_BIAS_LDO
+```
+
+即从顶层算第三级节点。
+
+统计规则：
+
+- 每个模块只归属到最近的第三级祖先桶。
+- 不重复计算父子模块。
+- 只统计可见树内模块。
+- 工作量单位为天。
+- 最小单位为 0.5 天。
+
+当前分布示例：
+
+```text
+SENSE_ADC_TOP   50 天
+Driver_Loop     41 天
+REF_BIAS_LDO    37.5 天
+MC_A10_PLL      32 天
+Temp_Sensor     12 天
+TEST_BUFFER     0 天
+未归入三级模块   0 天
+```
+
+`ALDO`、`LP_LDO` 如果属于 `REF_BIAS_LDO` 子树，不单独作为三级桶展示，而是打包到 `REF_BIAS_LDO` 下。
+
+当前 `REF_BIAS_LDO` 校验结果：
+
+```text
+REF_BIAS_LDO
+10 个模块
+37.5 天
+```
+
+## 10. 工作量单位
+
+工作量最小单位：
+
+```text
+0.5 天
+```
+
+保存和表格内编辑时都会规整为 0.5 天粒度。
+
+逻辑：
+
+```javascript
+function normalizeWorkloadDays(value) {
+  return Math.max(0, Math.round((parseFloat(value)||0)*2)/2);
+}
+```
+
+例如：
+
+```text
+0.3 -> 0.5
+0.7 -> 0.5
+0.8 -> 1.0
+```
+
+## 11. 自动排期逻辑
+
+自动排期按当前 Leaf 模块执行。
+
+排序规则：
+
+```text
+计划开始日期 -> 优先级 -> 模块名称
+```
+
+优先级顺序：
+
+```text
+P0 -> P1 -> P2 -> P3
+```
+
+计划完成日期计算：
+
+```text
+计划完成 = 计划开始 + 工作量天数 - 1
+```
+
+## 12. 问题追踪排序
+
+问题追踪页和项目详情里的问题列表都按优先级排序。
+
+排序规则：
+
+```text
+P0 -> P1 -> P2 -> P3
+```
+
+同一优先级内继续按：
+
+```text
+计划关闭日期 -> 日期 -> 标题
+```
+
+## 13. 已删除或简化的界面项
+
+为了避免界面拥挤和隐藏字段误差，模块编辑中已删除：
+
+```text
+Layout状态
+DRC/LVS/PEX
+阻塞/备注
+```
+
+项目详情中已删除无用的 rollup sheet/card：
+
+```text
+Tapeout Blocker
+排期风险
+签核错误
+Leaf平均进度
+```
+
+## 14. 看板当前主要内容
+
+总览看板：
+
+- 项目总数
+- Leaf 模块进度完成率
+- 未关闭问题
+- P0 紧急问题
+- 本周问题清单
+- Layout 人力统计
+- 项目进度总览
+- 待处理高优先级问题
+
+看板视图：
+
+- 电路状态看板
+- Layout 状态看板
+- Layout 人力统计
+- 三级模块人力分布
+- 负责人工作量分布
+
+## 15. 复刻步骤
+
+在新电脑上复刻时：
+
+1. 复制整个目录：
+
+```text
+D:\codex\PM开发
+```
+
+2. 确认数据文件存在：
+
+```text
+D:\codex\PM开发\ic-pm-web\data\ic_pm_data.json
+```
+
+3. 启动 server：
+
+```powershell
+cd "D:\codex\PM开发\ic-pm-web"
+python server.py
+```
+
+4. 打开本机网页：
+
+```text
+http://127.0.0.1:8899/
+```
+
+5. 给同事访问时，使用该电脑当前的局域网 IP：
+
+```text
+http://当前电脑IP:8899/
+```
+
+如果要继续使用固定地址：
+
+```text
+http://10.10.18.35:8899/
+```
+
+需要确保新电脑或当前电脑仍然拿到 `10.10.18.35`。
+
+## 16. 当前确认状态
+
+最后确认过的固定团队入口：
+
+```text
+http://10.10.18.35:8899/
+```
+
+server 端口：
+
+```text
+8899
+```
+
+server 绑定：
+
+```text
+0.0.0.0
+```
+
+数据文件：
+
+```text
+D:\codex\PM开发\ic-pm-web\data\ic_pm_data.json
+```
