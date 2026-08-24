@@ -1,0 +1,16 @@
+layout  xSnapSpacing    float   0.005
+layout  ySnapSpacing    float   0.005
+layout	displayPinNames	boolean	t
+layout	ruleGravityOn	boolean	t
+layout	displayResolution	string	"High"
+ui enableMenuShortcuts boolean nil
+ui checkAccessKeyConflicts boolean t
+layout  	 leWindowBBox   string  "((1940 0) (3840 1080))"
+schematic       schWindowBBox   string  "((0 0) (1900 950))"
+layoutXL        layoutWindow    string  "((1940 0) (3840 1080))"
+layoutXL        schematicWindow string  "((0 0) (1900 950))"
+layout  gravityOn       boolean t
+layout  labelFontStyle  cyclic  "roman"
+layout  createAsLabel   boolean t
+cdsLibManager.main dblClickEditCellView boolean nil
+
